@@ -90,10 +90,26 @@ docker logs -f syslog-encryptor | docker run -i \
 
 ### Encryptor Environment Variables
 
-- `SOCKET_PATH`: Unix socket path (default: `/dev/log`)
-- `LISTEN_ADDR`: TCP address to listen on (default: `0.0.0.0:514`)
+**Connection Options** (at least one required):
+- `SOCKET_PATH`: Unix socket path (optional - enables Unix socket server)
+- `LISTEN_ADDR`: TCP address to listen on (optional - enables TCP server)
+
+**Encryption Keys** (both required):
 - `ENCRYPTOR_PRIVATE_KEY`: 32-byte hex-encoded private key (required)
 - `DECRYPTOR_PUBLIC_KEY`: 32-byte hex-encoded public key (required)
+
+**Examples:**
+```bash
+# TCP-only mode
+export LISTEN_ADDR="0.0.0.0:514"
+
+# Unix socket-only mode  
+export SOCKET_PATH="/tmp/syslog.sock"
+
+# Dual mode (both TCP and Unix socket)
+export LISTEN_ADDR="0.0.0.0:514"
+export SOCKET_PATH="/dev/log"
+```
 
 ### Decryptor Environment Variables
 
@@ -140,9 +156,16 @@ go build -o syslog-encryptor .
 # Build decryptor  
 cd decryptor && go build -o decryptor .
 
-# Run encryptor
+# Run encryptor (TCP mode)
 export ENCRYPTOR_PRIVATE_KEY="your_key"
 export DECRYPTOR_PUBLIC_KEY="your_key"
+export LISTEN_ADDR="localhost:9514"
+./syslog-encryptor
+
+# Or run encryptor (Unix socket mode)
+export ENCRYPTOR_PRIVATE_KEY="your_key"
+export DECRYPTOR_PUBLIC_KEY="your_key"
+export SOCKET_PATH="/tmp/syslog.sock"
 ./syslog-encryptor
 
 # Run decryptor (in another terminal)
@@ -182,6 +205,16 @@ Encrypted logs are output as compact JSON lines:
 - **Forensic integrity** - Tamper-evident encrypted audit trails
 
 ## Troubleshooting
+
+### Configuration errors
+
+1. **"At least one of LISTEN_ADDR or SOCKET_PATH must be defined"**
+   - Set either `LISTEN_ADDR` for TCP mode or `SOCKET_PATH` for Unix socket mode
+   - Or set both for dual mode
+
+2. **"Permission denied" errors**
+   - For TCP: Use non-privileged port (e.g., `LISTEN_ADDR=localhost:9514`)
+   - For Unix socket: Ensure path is writable (e.g., `/tmp/syslog.sock`)
 
 ### No encrypted logs appearing
 
