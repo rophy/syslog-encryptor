@@ -12,11 +12,8 @@ func main() {
 	// Set log output to stderr to keep stdout clean for JSON
 	log.SetOutput(os.Stderr)
 	
-	// Configuration from environment variables
+	// Configuration from environment variables (only if explicitly configured)
 	listenAddr := os.Getenv("LISTEN_ADDR")
-	if listenAddr == "" {
-		listenAddr = "0.0.0.0:514"
-	}
 
 	// Support Unix socket for direct syslog integration (only if explicitly configured)
 	socketPath := os.Getenv("SOCKET_PATH")
@@ -82,14 +79,23 @@ func main() {
 
 	log.Printf("Starting MariaDB audit log encryptor...")
 
-	// Start TCP server
-	go func() {
-		log.Printf("Starting TCP syslog server on %s", listenAddr)
-		server := NewSyslogServer(listenAddr, encryptor)
-		if err := server.Start(); err != nil {
-			log.Printf("TCP server failed: %v", err)
-		}
-	}()
+	// Validate that at least one server type is configured
+	if listenAddr == "" && socketPath == "" {
+		log.Fatal("At least one of LISTEN_ADDR or SOCKET_PATH must be defined")
+	}
+
+	// Start TCP server only if LISTEN_ADDR is explicitly defined
+	if listenAddr != "" {
+		go func() {
+			log.Printf("Starting TCP syslog server on %s", listenAddr)
+			server := NewSyslogServer(listenAddr, encryptor)
+			if err := server.Start(); err != nil {
+				log.Printf("TCP server failed: %v", err)
+			}
+		}()
+	} else {
+		log.Printf("LISTEN_ADDR not defined - TCP server disabled")
+	}
 
 	// Start Unix socket server only if SOCKET_PATH is explicitly defined
 	if socketPath != "" {
