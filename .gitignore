@@ -1,1 +1,4 @@
 syslog-encryptor
+.env
+*.pem
+

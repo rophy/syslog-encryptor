@@ -15,6 +15,12 @@ func main() {
 		listenAddr = "0.0.0.0:514"
 	}
 
+	// Support Unix socket for direct syslog integration
+	socketPath := os.Getenv("SOCKET_PATH")
+	if socketPath == "" {
+		socketPath = "/dev/log"
+	}
+
 	encryptorPrivateKeyHex := os.Getenv("ENCRYPTOR_PRIVATE_KEY")
 	if encryptorPrivateKeyHex == "" {
 		log.Fatal("ENCRYPTOR_PRIVATE_KEY environment variable is required (32-byte hex string)")
@@ -64,9 +70,6 @@ func main() {
 	log.Printf("Encryptor public key: %x", encryptor.GetPublicKey())
 	log.Printf("Decryptor public key: %x", decryptorPublicKey)
 
-	// Create and start syslog server
-	server := NewSyslogServer(listenAddr, encryptor)
-
 	// Handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -78,7 +81,20 @@ func main() {
 	}()
 
 	log.Printf("Starting MariaDB audit log encryptor...")
-	if err := server.Start(); err != nil {
-		log.Fatalf("Server failed: %v", err)
+
+	// Start both TCP and Unix socket servers
+	go func() {
+		log.Printf("Starting TCP syslog server on %s", listenAddr)
+		server := NewSyslogServer(listenAddr, encryptor)
+		if err := server.Start(); err != nil {
+			log.Printf("TCP server failed: %v", err)
+		}
+	}()
+
+	// Start Unix socket server for direct syslog integration
+	log.Printf("Starting Unix socket syslog server on %s", socketPath)
+	unixServer := NewUnixSyslogServer(socketPath, encryptor)
+	if err := unixServer.Start(); err != nil {
+		log.Fatalf("Unix socket server failed: %v", err)
 	}
 }

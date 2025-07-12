@@ -1,0 +1,14 @@
+[mysqld]
+# Enable audit log plugin
+plugin_load_add = server_audit
+
+# Audit log configuration
+server_audit_logging = ON
+server_audit_events = CONNECT,QUERY,TABLE
+server_audit_output_type = syslog
+server_audit_syslog_facility = LOG_USER
+server_audit_syslog_ident = mysqld_audit
+server_audit_syslog_info = "audit_log:"
+
+# Sidecar configuration: send directly to localhost:514
+# No rsyslog needed - syslog-encryptor shares the same network namespace
