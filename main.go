@@ -1,11 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 func main() {
@@ -17,6 +21,12 @@ func main() {
 
 	// Support Unix socket for direct syslog integration (only if explicitly configured)
 	socketPath := os.Getenv("SOCKET_PATH")
+	
+	// Support stdin processing mode (only if explicitly configured)
+	stdinMode := os.Getenv("STDIN_MODE") != ""
+	
+	// Prometheus metrics endpoint configuration
+	metricsAddr := os.Getenv("METRICS_ADDR")
 
 	encryptorPrivateKeyHex := os.Getenv("ENCRYPTOR_PRIVATE_KEY")
 	if encryptorPrivateKeyHex == "" {
@@ -77,9 +87,31 @@ func main() {
 		os.Exit(0)
 	}()
 
+	// Handle stdin mode first - ignore all other configuration
+	if stdinMode {
+		log.Printf("Starting stdin processing mode...")
+		if err := processStdinSimple(encryptor); err != nil {
+			log.Fatalf("Stdin processing failed: %v", err)
+		}
+		return
+	}
+
 	log.Printf("Starting MariaDB audit log encryptor...")
 
-	// Validate that at least one server type is configured
+	// Initialize Prometheus metrics (only for server modes)
+	InitMetrics()
+	
+	// Start metrics server if configured
+	if metricsAddr != "" {
+		go func() {
+			log.Printf("Starting Prometheus metrics server on %s", metricsAddr)
+			if err := StartMetricsServer(metricsAddr); err != nil {
+				log.Printf("Metrics server failed: %v", err)
+			}
+		}()
+	}
+
+	// Validate that at least one server input method is configured
 	if listenAddr == "" && socketPath == "" {
 		log.Fatal("At least one of LISTEN_ADDR or SOCKET_PATH must be defined")
 	}
@@ -109,4 +141,91 @@ func main() {
 		// Keep TCP server running indefinitely
 		select {}
 	}
+}
+
+// processStdin reads log lines from stdin and encrypts them
+func processStdin(encryptor *Encryptor) error {
+	scanner := bufio.NewScanner(os.Stdin)
+	lineCount := 0
+	
+	for scanner.Scan() {
+		line := scanner.Text()
+		lineCount++
+		
+		// Encrypt the line
+		encryptResult, err := encryptor.Encrypt(line)
+		if err != nil {
+			log.Printf("Failed to encrypt line %d: %v", lineCount, err)
+			continue
+		}
+		
+		// Record metrics for processed message
+		RecordProcessedLog(len(line))
+		
+		// Create encrypted log entry (same format as server.go)
+		entry := EncryptedLogEntry{
+			Timestamp:     time.Now().UTC().Format(time.RFC3339Nano),
+			Nonce:         encryptResult.Nonce,
+			EncryptedData: encryptResult.EncryptedData,
+			PublicKey:     fmt.Sprintf("%x", encryptor.GetPublicKey()),
+		}
+		
+		// Output as JSON line to stdout
+		jsonData, err := json.Marshal(entry)
+		if err != nil {
+			log.Printf("Failed to marshal JSON for line %d: %v", lineCount, err)
+			continue
+		}
+		
+		fmt.Println(string(jsonData))
+	}
+	
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error reading stdin: %w", err)
+	}
+	
+	log.Printf("Processed %d lines from stdin", lineCount)
+	return nil
+}
+
+// processStdinSimple reads log lines from stdin and encrypts them (simple single-threaded mode)
+func processStdinSimple(encryptor *Encryptor) error {
+	scanner := bufio.NewScanner(os.Stdin)
+	lineCount := 0
+	
+	for scanner.Scan() {
+		line := scanner.Text()
+		lineCount++
+		
+		// Encrypt the line
+		encryptResult, err := encryptor.Encrypt(line)
+		if err != nil {
+			log.Printf("Failed to encrypt line %d: %v", lineCount, err)
+			continue
+		}
+		
+		// Create encrypted log entry (no metrics recording)
+		entry := EncryptedLogEntry{
+			Timestamp:     time.Now().UTC().Format(time.RFC3339Nano),
+			Nonce:         encryptResult.Nonce,
+			EncryptedData: encryptResult.EncryptedData,
+			PublicKey:     fmt.Sprintf("%x", encryptor.GetPublicKey()),
+		}
+		
+		// Output as JSON line to stdout
+		jsonData, err := json.Marshal(entry)
+		if err != nil {
+			log.Printf("Failed to marshal JSON for line %d: %v", lineCount, err)
+			continue
+		}
+		
+		fmt.Println(string(jsonData))
+	}
+	
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error reading stdin: %w", err)
+	}
+	
+	log.Printf("Processed %d lines from stdin", lineCount)
+	return nil
 }

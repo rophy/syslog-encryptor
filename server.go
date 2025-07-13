@@ -93,6 +93,9 @@ func (s *SyslogServer) processMessage(data []byte) error {
 		return fmt.Errorf("failed to encrypt message: %w", err)
 	}
 
+	// Record metrics for processed message
+	RecordProcessedLog(len(messageContent))
+
 	// Create encrypted log entry
 	entry := EncryptedLogEntry{
 		Timestamp:     time.Now().UTC().Format(time.RFC3339Nano),
@@ -202,6 +205,9 @@ func (s *UnixSyslogServer) processUnixMessage(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to encrypt message: %w", err)
 	}
+
+	// Record metrics for processed message
+	RecordProcessedLog(len(message))
 
 	// Create encrypted log entry
 	entry := EncryptedLogEntry{

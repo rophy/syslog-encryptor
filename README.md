@@ -71,11 +71,13 @@ docker logs -f syslog-encryptor | docker run -i \
 ├── README.md                   # This file
 ├── docker-compose.yaml         # Docker Compose with MariaDB + encryptor
 ├── kubernetes-sidecar.yaml     # Kubernetes StatefulSet with sidecar
+├── mariadb-config.cnf          # MariaDB audit plugin configuration
 ├── Dockerfile                  # Encryptor container
+├── Makefile                    # Build targets
 ├── main.go                     # Encryptor main application
 ├── server.go                   # TCP + Unix socket servers  
 ├── crypto.go                   # X25519 + AES-GCM encryption
-├── mariadb-config.cnf          # MariaDB audit plugin configuration
+├── metrics.go                  # Prometheus metrics
 ├── decryptor/                  # Decryptor module
 │   ├── main.go                 # Decryptor application  
 │   ├── crypto.go               # Decryption functions
@@ -98,6 +100,10 @@ docker logs -f syslog-encryptor | docker run -i \
 - `ENCRYPTOR_PRIVATE_KEY`: 32-byte hex-encoded private key (required)
 - `DECRYPTOR_PUBLIC_KEY`: 32-byte hex-encoded public key (required)
 
+**Optional Features**:
+- `STDIN_MODE`: Set to any value to enable stdin processing mode (ignores all other configuration, single-threaded)
+- `METRICS_ADDR`: Address for Prometheus metrics endpoint (e.g., `:8080`) - server modes only
+
 **Examples:**
 ```bash
 # TCP-only mode
@@ -109,7 +115,20 @@ export SOCKET_PATH="/tmp/syslog.sock"
 # Dual mode (both TCP and Unix socket)
 export LISTEN_ADDR="0.0.0.0:514"
 export SOCKET_PATH="/dev/log"
+
+# With Prometheus metrics
+export SOCKET_PATH="/tmp/syslog.sock"
+export METRICS_ADDR=":8080"
+
+# Stdin processing mode (ignores all other config)
+export STDIN_MODE=1
 ```
+
+**STDIN Mode Behavior**:
+- **Single-threaded**: No background goroutines or servers
+- **Ignores all other config**: SOCKET_PATH, LISTEN_ADDR, METRICS_ADDR are ignored
+- **Pure processing**: Only reads stdin, encrypts, outputs JSON, exits on EOF
+- **High performance**: ~175K msg/sec encryption rate
 
 ### Decryptor Environment Variables
 
@@ -150,10 +169,11 @@ kubectl apply -f kubernetes-sidecar.yaml
 ### Standalone Binary
 
 ```bash
-# Build encryptor
-go build -o syslog-encryptor .
+# Build both binaries
+make build
 
-# Build decryptor  
+# Individual builds
+go build -o syslog-encryptor .
 cd decryptor && go build -o decryptor .
 
 # Run encryptor (TCP mode)
@@ -187,6 +207,38 @@ Encrypted logs are output as compact JSON lines:
 - **n**: Base64-encoded AES-GCM nonce (12 bytes)
 - **m**: Base64-encoded encrypted message content
 - **k**: Hex-encoded X25519 public key of encryptor
+
+## Prometheus Metrics
+
+When `METRICS_ADDR` is configured, the encryptor exposes Prometheus metrics at `/metrics`:
+
+### Available Metrics
+
+- **`syslog_encryptor_processed_logs_total`** (counter): Total number of log messages processed
+- **`syslog_encryptor_processed_bytes_total`** (counter): Total number of bytes processed
+
+### Example Usage
+
+```bash
+# Start encryptor with metrics
+export SOCKET_PATH="/tmp/syslog.sock"
+export METRICS_ADDR=":8080"
+./syslog-encryptor
+
+# Query metrics
+curl http://localhost:8080/metrics | grep syslog_encryptor
+```
+
+**Sample Output:**
+```
+# HELP syslog_encryptor_processed_bytes_total Total number of bytes processed by the syslog encryptor
+# TYPE syslog_encryptor_processed_bytes_total counter
+syslog_encryptor_processed_bytes_total 255
+
+# HELP syslog_encryptor_processed_logs_total Total number of log messages processed by the syslog encryptor
+# TYPE syslog_encryptor_processed_logs_total counter
+syslog_encryptor_processed_logs_total 5
+```
 
 ## Security
 
