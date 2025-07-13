@@ -1,16 +1,23 @@
 package main
 
 import (
-	"bufio"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 )
+
+type EncryptedLogEntry struct {
+	Timestamp     string `json:"t"`
+	Nonce         string `json:"n"`
+	EncryptedData string `json:"m"`
+	PublicKey     string `json:"k"`
+}
 
 func main() {
 	// Set log output to stderr to keep stdout clean for JSON
@@ -121,89 +128,59 @@ func main() {
 	}
 }
 
-// processStdin reads log lines from stdin and encrypts them
-func processStdin(encryptor *Encryptor) error {
-	scanner := bufio.NewScanner(os.Stdin)
+// processStdinSimple reads log lines from stdin and encrypts them (simple single-threaded mode)
+func processStdinSimple(encryptor *Encryptor) error {
+	parser := NewMessageParser(os.Stdin, '\n')
 	lineCount := 0
 	
-	for scanner.Scan() {
-		line := scanner.Text()
+	for {
+		message, err := parser.ReadMessage()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("error reading stdin: %w", err)
+		}
+		
+		// Skip empty messages
+		if len(message) == 0 {
+			continue
+		}
+		
 		lineCount++
 		
-		// Encrypt the line
-		encryptResult, err := encryptor.Encrypt(line)
-		if err != nil {
+		// Add back \n for consistent format with SOCK_STREAM
+		messageWithNewline := append(message, '\n')
+		
+		if err := encryptAndOutput(encryptor, messageWithNewline); err != nil {
 			log.Printf("Failed to encrypt line %d: %v", lineCount, err)
 			continue
 		}
-		
-		// Record metrics for processed message
-		RecordProcessedLog(len(line))
-		
-		// Create encrypted log entry (same format as server.go)
-		entry := EncryptedLogEntry{
-			Timestamp:     time.Now().UTC().Format(time.RFC3339Nano),
-			Nonce:         encryptResult.Nonce,
-			EncryptedData: encryptResult.EncryptedData,
-			PublicKey:     fmt.Sprintf("%x", encryptor.GetPublicKey()),
-		}
-		
-		// Output as JSON line to stdout
-		jsonData, err := json.Marshal(entry)
-		if err != nil {
-			log.Printf("Failed to marshal JSON for line %d: %v", lineCount, err)
-			continue
-		}
-		
-		fmt.Println(string(jsonData))
-	}
-	
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error reading stdin: %w", err)
 	}
 	
 	log.Printf("Processed %d lines from stdin", lineCount)
 	return nil
 }
 
-// processStdinSimple reads log lines from stdin and encrypts them (simple single-threaded mode)
-func processStdinSimple(encryptor *Encryptor) error {
-	scanner := bufio.NewScanner(os.Stdin)
-	lineCount := 0
-	
-	for scanner.Scan() {
-		line := scanner.Text()
-		lineCount++
-		
-		// Encrypt the line
-		encryptResult, err := encryptor.Encrypt(line)
-		if err != nil {
-			log.Printf("Failed to encrypt line %d: %v", lineCount, err)
-			continue
-		}
-		
-		// Create encrypted log entry (no metrics recording)
-		entry := EncryptedLogEntry{
-			Timestamp:     time.Now().UTC().Format(time.RFC3339Nano),
-			Nonce:         encryptResult.Nonce,
-			EncryptedData: encryptResult.EncryptedData,
-			PublicKey:     fmt.Sprintf("%x", encryptor.GetPublicKey()),
-		}
-		
-		// Output as JSON line to stdout
-		jsonData, err := json.Marshal(entry)
-		if err != nil {
-			log.Printf("Failed to marshal JSON for line %d: %v", lineCount, err)
-			continue
-		}
-		
-		fmt.Println(string(jsonData))
+// encryptAndOutput encrypts a message and outputs as JSON
+func encryptAndOutput(encryptor *Encryptor, message []byte) error {
+	encryptResult, err := encryptor.Encrypt(string(message))
+	if err != nil {
+		return fmt.Errorf("failed to encrypt message: %w", err)
 	}
 	
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error reading stdin: %w", err)
+	entry := EncryptedLogEntry{
+		Timestamp:     time.Now().UTC().Format(time.RFC3339Nano),
+		Nonce:         encryptResult.Nonce,
+		EncryptedData: encryptResult.EncryptedData,
+		PublicKey:     fmt.Sprintf("%x", encryptor.GetPublicKey()),
 	}
 	
-	log.Printf("Processed %d lines from stdin", lineCount)
+	jsonData, err := json.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+	
+	fmt.Println(string(jsonData))
 	return nil
 }

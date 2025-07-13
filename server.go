@@ -1,20 +1,12 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
-	"time"
 )
-
-type EncryptedLogEntry struct {
-	Timestamp     string `json:"t"`
-	Nonce         string `json:"n"`
-	EncryptedData string `json:"m"`
-	PublicKey     string `json:"k"`
-}
 
 // Unix Socket Server for direct syslog integration
 type UnixSyslogServer struct {
@@ -63,48 +55,32 @@ func (s *UnixSyslogServer) Start() error {
 func (s *UnixSyslogServer) handleUnixConnection(conn net.Conn) {
 	defer conn.Close()
 	
-	buffer := make([]byte, 4096)
+	parser := NewMessageParser(conn, '\x00')
+	
 	for {
-		n, err := conn.Read(buffer)
+		message, err := parser.ReadMessage()
 		if err != nil {
-			if err.Error() != "EOF" {
+			if err != io.EOF {
 				log.Printf("Error reading from Unix connection: %v", err)
 			}
 			break
 		}
 
-		if err := s.processUnixMessage(buffer[:n]); err != nil {
+		if err := s.processUnixMessage(message); err != nil {
 			log.Printf("Error processing Unix message: %v", err)
 		}
 	}
 }
 
 func (s *UnixSyslogServer) processUnixMessage(data []byte) error {
-	message := string(data)
-	
-	// Encrypt the message content
-	encryptResult, err := s.encryptor.Encrypt(message)
-	if err != nil {
-		return fmt.Errorf("failed to encrypt message: %w", err)
-	}
-
 	// Record metrics for processed message
-	RecordProcessedLog(len(message))
-
-	// Create encrypted log entry
-	entry := EncryptedLogEntry{
-		Timestamp:     time.Now().UTC().Format(time.RFC3339Nano),
-		Nonce:         encryptResult.Nonce,
-		EncryptedData: encryptResult.EncryptedData,
-		PublicKey:     fmt.Sprintf("%x", s.encryptor.GetPublicKey()),
+	RecordProcessedLog(len(data))
+	
+	// Message already has correct format (\n preserved, \x00 discarded by parser)
+	if err := encryptAndOutput(s.encryptor, data); err != nil {
+		return fmt.Errorf("failed to encrypt and output message: %w", err)
 	}
-
-	// Output as JSON line to stdout
-	jsonData, err := json.Marshal(entry)
-	if err != nil {
-		return fmt.Errorf("failed to marshal JSON: %w", err)
-	}
-
-	fmt.Println(string(jsonData))
+	
 	return nil
 }
+

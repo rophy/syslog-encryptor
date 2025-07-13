@@ -92,8 +92,8 @@ func main() {
 			continue
 		}
 
-		// Output the original log message to stdout
-		fmt.Println(decryptedMessage)
+		// Output the original log message to stdout (preserve original formatting)
+		fmt.Print(decryptedMessage)
 	}
 
 	if err := scanner.Err(); err != nil {
