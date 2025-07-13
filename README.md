@@ -92,9 +92,8 @@ docker logs -f syslog-encryptor | docker run -i \
 
 ### Encryptor Environment Variables
 
-**Connection Options** (at least one required):
-- `SOCKET_PATH`: Unix socket path (optional - enables Unix socket server)
-- `LISTEN_ADDR`: TCP address to listen on (optional - enables TCP server)
+**Connection Options**:
+- `SOCKET_PATH`: Unix socket path (required for server mode)
 
 **Encryption Keys** (both required):
 - `ENCRYPTOR_PRIVATE_KEY`: 32-byte hex-encoded private key (required)
@@ -106,14 +105,7 @@ docker logs -f syslog-encryptor | docker run -i \
 
 **Examples:**
 ```bash
-# TCP-only mode
-export LISTEN_ADDR="0.0.0.0:514"
-
-# Unix socket-only mode  
-export SOCKET_PATH="/tmp/syslog.sock"
-
-# Dual mode (both TCP and Unix socket)
-export LISTEN_ADDR="0.0.0.0:514"
+# Unix socket mode (standard)
 export SOCKET_PATH="/dev/log"
 
 # With Prometheus metrics
@@ -126,7 +118,7 @@ export STDIN_MODE=1
 
 **STDIN Mode Behavior**:
 - **Single-threaded**: No background goroutines or servers
-- **Ignores all other config**: SOCKET_PATH, LISTEN_ADDR, METRICS_ADDR are ignored
+- **Ignores all other config**: SOCKET_PATH, METRICS_ADDR are ignored
 - **Pure processing**: Only reads stdin, encrypts, outputs JSON, exits on EOF
 - **High performance**: ~175K msg/sec encryption rate
 
@@ -176,13 +168,7 @@ make build
 go build -o syslog-encryptor .
 cd decryptor && go build -o decryptor .
 
-# Run encryptor (TCP mode)
-export ENCRYPTOR_PRIVATE_KEY="your_key"
-export DECRYPTOR_PUBLIC_KEY="your_key"
-export LISTEN_ADDR="localhost:9514"
-./syslog-encryptor
-
-# Or run encryptor (Unix socket mode)
+# Run encryptor (Unix socket mode)
 export ENCRYPTOR_PRIVATE_KEY="your_key"
 export DECRYPTOR_PUBLIC_KEY="your_key"
 export SOCKET_PATH="/tmp/syslog.sock"
@@ -260,13 +246,12 @@ syslog_encryptor_processed_logs_total 5
 
 ### Configuration errors
 
-1. **"At least one of LISTEN_ADDR or SOCKET_PATH must be defined"**
-   - Set either `LISTEN_ADDR` for TCP mode or `SOCKET_PATH` for Unix socket mode
-   - Or set both for dual mode
+1. **"SOCKET_PATH environment variable is required"**
+   - Set `SOCKET_PATH` to the Unix socket path (e.g., `/dev/log` or `/tmp/syslog.sock`)
 
 2. **"Permission denied" errors**
-   - For TCP: Use non-privileged port (e.g., `LISTEN_ADDR=localhost:9514`)
-   - For Unix socket: Ensure path is writable (e.g., `/tmp/syslog.sock`)
+   - Ensure socket path is writable (e.g., `/tmp/syslog.sock`)
+   - Check directory permissions for socket creation
 
 ### No encrypted logs appearing
 

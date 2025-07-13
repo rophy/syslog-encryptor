@@ -16,10 +16,7 @@ func main() {
 	// Set log output to stderr to keep stdout clean for JSON
 	log.SetOutput(os.Stderr)
 	
-	// Configuration from environment variables (only if explicitly configured)
-	listenAddr := os.Getenv("LISTEN_ADDR")
-
-	// Support Unix socket for direct syslog integration (only if explicitly configured)
+	// Support Unix socket for direct syslog integration (required unless STDIN_MODE)
 	socketPath := os.Getenv("SOCKET_PATH")
 	
 	// Support stdin processing mode (only if explicitly configured)
@@ -111,35 +108,16 @@ func main() {
 		}()
 	}
 
-	// Validate that at least one server input method is configured
-	if listenAddr == "" && socketPath == "" {
-		log.Fatal("At least one of LISTEN_ADDR or SOCKET_PATH must be defined")
+	// Validate that socket path is configured for server mode
+	if socketPath == "" {
+		log.Fatal("SOCKET_PATH environment variable is required")
 	}
 
-	// Start TCP server only if LISTEN_ADDR is explicitly defined
-	if listenAddr != "" {
-		go func() {
-			log.Printf("Starting TCP syslog server on %s", listenAddr)
-			server := NewSyslogServer(listenAddr, encryptor)
-			if err := server.Start(); err != nil {
-				log.Printf("TCP server failed: %v", err)
-			}
-		}()
-	} else {
-		log.Printf("LISTEN_ADDR not defined - TCP server disabled")
-	}
-
-	// Start Unix socket server only if SOCKET_PATH is explicitly defined
-	if socketPath != "" {
-		log.Printf("Starting Unix socket syslog server on %s", socketPath)
-		unixServer := NewUnixSyslogServer(socketPath, encryptor)
-		if err := unixServer.Start(); err != nil {
-			log.Fatalf("Unix socket server failed: %v", err)
-		}
-	} else {
-		log.Printf("SOCKET_PATH not defined - Unix socket server disabled")
-		// Keep TCP server running indefinitely
-		select {}
+	// Start Unix socket server
+	log.Printf("Starting Unix socket syslog server on %s", socketPath)
+	unixServer := NewUnixSyslogServer(socketPath, encryptor)
+	if err := unixServer.Start(); err != nil {
+		log.Fatalf("Unix socket server failed: %v", err)
 	}
 }
 

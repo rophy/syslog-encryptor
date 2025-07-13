@@ -6,7 +6,6 @@ services:
     env_file: .env
     environment:
       SOCKET_PATH: "/tmp/syslog.sock"
-      LISTEN_ADDR: "0.0.0.0:514"
     volumes:
       # Create socket on host filesystem
       - /tmp:/tmp
