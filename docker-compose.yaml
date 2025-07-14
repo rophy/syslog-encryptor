@@ -5,10 +5,9 @@ services:
     container_name: syslog-encryptor
     env_file: .env
     environment:
-      SOCKET_PATH: "/tmp/syslog.sock"
+      SOCKET_PATH: "/syslog/syslog.sock"
     volumes:
-      # Create socket on host filesystem
-      - /tmp:/tmp
+      - empty_dir:/syslog
     restart: unless-stopped
 
   # MariaDB mounts the socket file directly as /dev/log
@@ -23,14 +22,12 @@ services:
     volumes:
       - mariadb_data:/var/lib/mysql
       - ./mariadb-config.cnf:/etc/mysql/conf.d/audit.cnf
-      # Bind mount the socket file directly to /dev/log
-      - /tmp/syslog.sock:/dev/log
+      - empty_dir:/syslog
     ports:
       - "3306:3306"
-    depends_on:
-      - syslog-encryptor
-    command: ["sh", "-c", "while [ ! -S /dev/log ]; do echo 'Waiting for /dev/log socket...' && sleep 1; done && echo 'Socket available, starting MariaDB...' && docker-entrypoint.sh mariadbd"]
+    command: ["sh", "-c", "while [ ! -S /syslog/syslog.sock ]; do echo 'Waiting for syslog socket...' && sleep 1; done && echo 'Socket available, starting MariaDB...' && ln -s /syslog/syslog.sock /dev/log && docker-entrypoint.sh mariadbd"]
     restart: unless-stopped
 
 volumes:
-  mariadb_data:
+  mariadb_data: {}
+  empty_dir: {}
