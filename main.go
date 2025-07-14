@@ -84,10 +84,16 @@ func main() {
 	// Handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
+	
+	var unixServer *UnixSyslogServer
+	
 	go func() {
 		<-sigChan
 		log.Println("Shutting down gracefully...")
+		if unixServer != nil {
+			unixServer.Cleanup()
+		}
+		log.Println("Cleanup completed, exiting...")
 		os.Exit(0)
 	}()
 
@@ -122,7 +128,7 @@ func main() {
 
 	// Start Unix socket server
 	log.Printf("Starting Unix socket syslog server on %s", socketPath)
-	unixServer := NewUnixSyslogServer(socketPath, encryptor)
+	unixServer = NewUnixSyslogServer(socketPath, encryptor)
 	if err := unixServer.Start(); err != nil {
 		log.Fatalf("Unix socket server failed: %v", err)
 	}

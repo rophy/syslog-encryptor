@@ -12,6 +12,7 @@ import (
 type UnixSyslogServer struct {
 	encryptor  *Encryptor
 	socketPath string
+	listener   net.Listener
 }
 
 func NewUnixSyslogServer(socketPath string, encryptor *Encryptor) *UnixSyslogServer {
@@ -32,7 +33,8 @@ func (s *UnixSyslogServer) Start() error {
 	if err != nil {
 		return fmt.Errorf("failed to create Unix socket: %w", err)
 	}
-	defer listener.Close()
+	s.listener = listener
+	defer s.Cleanup()
 
 	// Set socket permissions so MariaDB can write to it
 	if err := os.Chmod(s.socketPath, 0666); err != nil {
@@ -84,3 +86,17 @@ func (s *UnixSyslogServer) processUnixMessage(data []byte) error {
 	return nil
 }
 
+// Cleanup closes the listener and removes the socket file
+func (s *UnixSyslogServer) Cleanup() {
+	if s.listener != nil {
+		log.Printf("Closing Unix socket listener...")
+		s.listener.Close()
+	}
+	
+	if s.socketPath != "" {
+		log.Printf("Removing socket file: %s", s.socketPath)
+		if err := os.RemoveAll(s.socketPath); err != nil {
+			log.Printf("Error removing socket file: %v", err)
+		}
+	}
+}
