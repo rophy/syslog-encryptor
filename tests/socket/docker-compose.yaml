@@ -1,0 +1,28 @@
+services:
+  # Syslog encryptor creates socket on shared volume
+  syslog-encryptor:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: socket-test-encryptor
+    environment:
+      - SOCKET_PATH=/syslog/test.sock
+      - ENCRYPTOR_PRIVATE_KEY=d8cf4d5e205eec4d8656af74328cd22357c482c8ca2d53f96466a4fe591c085a
+      - DECRYPTOR_PUBLIC_KEY=0187e2244e87ee3ffa91f6f05031761cb55d768a17787180dc005339837d9b44
+    volumes:
+      - socket_shared:/syslog
+    restart: unless-stopped
+
+  # Syslog generator mounts the socket as /dev/log
+  syslog-generator:
+    build: .
+    container_name: socket-test-generator
+    volumes:
+      - socket_shared:/syslog
+    depends_on:
+      - syslog-encryptor
+    command: ["sh", "-c", "while [ ! -S /syslog/test.sock ]; do echo 'Waiting for socket...' && sleep 1; done && echo 'Socket found, linking and starting generator...' && ln -s /syslog/test.sock /dev/log && ./syslog-generator -n 1000 -s 1024 -tag socket-test -d 0ms"]
+    restart: "no"
+
+volumes:
+  socket_shared:

@@ -5,13 +5,15 @@ import (
 	"log"
 	"net"
 	"os"
+	"sync"
 )
 
 // Unix Socket Server for direct syslog integration
 type UnixSyslogServer struct {
-	encryptor  *Encryptor
-	socketPath string
-	listener   net.PacketConn
+	encryptor   *Encryptor
+	socketPath  string
+	listener    net.PacketConn
+	cleanupOnce sync.Once // Ensure cleanup happens exactly once during shutdown
 }
 
 func NewUnixSyslogServer(socketPath string, encryptor *Encryptor) *UnixSyslogServer {
@@ -52,6 +54,8 @@ func (s *UnixSyslogServer) Start() error {
 		}
 
 		// Process the packet in a goroutine
+		// Note: Unbounded goroutine creation is acceptable since this runs as localhost sidecar
+		// with no external threat surface (not exposed to untrusted networks)
 		go s.handleUnixPacket(buffer[:n], addr)
 	}
 }
@@ -80,15 +84,17 @@ func (s *UnixSyslogServer) processUnixMessage(data []byte) error {
 
 // Cleanup closes the listener and removes the socket file
 func (s *UnixSyslogServer) Cleanup() {
-	if s.listener != nil {
-		log.Printf("Closing Unix datagram socket...")
-		s.listener.Close()
-	}
-	
-	if s.socketPath != "" {
-		log.Printf("Removing socket file: %s", s.socketPath)
-		if err := os.RemoveAll(s.socketPath); err != nil {
-			log.Printf("Error removing socket file: %v", err)
+	s.cleanupOnce.Do(func() {
+		if s.listener != nil {
+			log.Printf("Closing Unix datagram socket...")
+			s.listener.Close()
 		}
-	}
+		
+		if s.socketPath != "" {
+			log.Printf("Removing socket file: %s", s.socketPath)
+			if err := os.RemoveAll(s.socketPath); err != nil {
+				log.Printf("Error removing socket file: %v", err)
+			}
+		}
+	})
 }

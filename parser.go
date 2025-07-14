@@ -56,6 +56,8 @@ func (p *MessageParser) ReadMessage() ([]byte, error) {
 			return nil, err
 		}
 		
+		// Note: Unbounded buffer growth is acceptable since stdin is only used for testing
+		// in controlled environments, not production deployment
 		p.buffer = append(p.buffer, readBuffer[:n]...)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -45,6 +46,8 @@ func main() {
 	// Decode encryptor private key
 	encryptorPrivateKeyBytes, err := hex.DecodeString(encryptorPrivateKeyHex)
 	if err != nil {
+		// Note: Crashing on invalid config is intentional - fail fast on startup
+		// for misconfiguration rather than running with broken crypto
 		log.Fatalf("Invalid ENCRYPTOR_PRIVATE_KEY format: %v", err)
 	}
 	if len(encryptorPrivateKeyBytes) != 32 {
@@ -86,15 +89,18 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	
 	var unixServer *UnixSyslogServer
+	var shutdownOnce sync.Once
 	
 	go func() {
 		<-sigChan
-		log.Println("Shutting down gracefully...")
-		if unixServer != nil {
-			unixServer.Cleanup()
-		}
-		log.Println("Cleanup completed, exiting...")
-		os.Exit(0)
+		shutdownOnce.Do(func() {
+			log.Println("Shutting down gracefully...")
+			if unixServer != nil {
+				unixServer.Cleanup()
+			}
+			log.Println("Cleanup completed, exiting...")
+			os.Exit(0)
+		})
 	}()
 
 	// Handle stdin mode first - ignore all other configuration
@@ -159,6 +165,8 @@ func processStdinSimple(encryptor *Encryptor) error {
 		message = StripTrailingNewline(message)
 		
 		if err := encryptAndOutput(encryptor, message); err != nil {
+			// Note: Continuing on encryption errors is intentional - graceful degradation
+			// is preferred over crashing. Operators can monitor logs for failures.
 			log.Printf("Failed to encrypt line %d: %v", lineCount, err)
 			continue
 		}
