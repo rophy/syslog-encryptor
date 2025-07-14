@@ -53,10 +53,8 @@ func (s *UnixSyslogServer) Start() error {
 			continue
 		}
 
-		// Process the packet in a goroutine
-		// Note: Unbounded goroutine creation is acceptable since this runs as localhost sidecar
-		// with no external threat surface (not exposed to untrusted networks)
-		go s.handleUnixPacket(buffer[:n], addr)
+		// Process the packet directly (no goroutine needed for fast encryption operations)
+		s.handleUnixPacket(buffer[:n], addr)
 	}
 }
 
