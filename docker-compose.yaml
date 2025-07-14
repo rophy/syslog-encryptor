@@ -29,6 +29,7 @@ services:
       - "3306:3306"
     depends_on:
       - syslog-encryptor
+    command: ["sh", "-c", "while [ ! -S /dev/log ]; do echo 'Waiting for /dev/log socket...' && sleep 1; done && echo 'Socket available, starting MariaDB...' && docker-entrypoint.sh mariadbd"]
     restart: unless-stopped
 
 volumes:
