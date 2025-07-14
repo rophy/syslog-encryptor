@@ -13,7 +13,6 @@ type EncryptedLogEntry struct {
 	Timestamp     string `json:"t"`
 	Nonce         string `json:"n"`
 	EncryptedData string `json:"m"`
-	PublicKey     string `json:"k"`
 }
 
 func main() {

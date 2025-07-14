@@ -17,7 +17,6 @@ type EncryptedLogEntry struct {
 	Timestamp     string `json:"t"`
 	Nonce         string `json:"n"`
 	EncryptedData string `json:"m"`
-	PublicKey     string `json:"k"`
 }
 
 func main() {
@@ -187,7 +186,6 @@ func encryptAndOutput(encryptor *Encryptor, message []byte) error {
 		Timestamp:     time.Now().UTC().Format(time.RFC3339Nano),
 		Nonce:         encryptResult.Nonce,
 		EncryptedData: encryptResult.EncryptedData,
-		PublicKey:     fmt.Sprintf("%x", encryptor.GetPublicKey()),
 	}
 	
 	jsonData, err := json.Marshal(entry)
