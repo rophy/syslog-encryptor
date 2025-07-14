@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"os"
@@ -12,7 +11,7 @@ import (
 type UnixSyslogServer struct {
 	encryptor  *Encryptor
 	socketPath string
-	listener   net.Listener
+	listener   net.PacketConn
 }
 
 func NewUnixSyslogServer(socketPath string, encryptor *Encryptor) *UnixSyslogServer {
@@ -28,10 +27,10 @@ func (s *UnixSyslogServer) Start() error {
 		return fmt.Errorf("failed to remove existing socket: %w", err)
 	}
 
-	// Create Unix domain socket
-	listener, err := net.Listen("unix", s.socketPath)
+	// Create Unix domain datagram socket (SOCK_DGRAM)
+	listener, err := net.ListenPacket("unixgram", s.socketPath)
 	if err != nil {
-		return fmt.Errorf("failed to create Unix socket: %w", err)
+		return fmt.Errorf("failed to create Unix datagram socket: %w", err)
 	}
 	s.listener = listener
 	defer s.Cleanup()
@@ -41,36 +40,29 @@ func (s *UnixSyslogServer) Start() error {
 		return fmt.Errorf("failed to set socket permissions: %w", err)
 	}
 
-	log.Printf("Unix syslog encryptor listening on %s", s.socketPath)
+	log.Printf("Unix syslog encryptor listening on %s (SOCK_DGRAM)", s.socketPath)
 
+	// Handle datagram packets
+	buffer := make([]byte, 65536) // Max UDP packet size
 	for {
-		conn, err := listener.Accept()
+		n, addr, err := listener.ReadFrom(buffer)
 		if err != nil {
-			log.Printf("Error accepting Unix connection: %v", err)
+			log.Printf("Error reading from Unix datagram socket: %v", err)
 			continue
 		}
 
-		go s.handleUnixConnection(conn)
+		// Process the packet in a goroutine
+		go s.handleUnixPacket(buffer[:n], addr)
 	}
 }
 
-func (s *UnixSyslogServer) handleUnixConnection(conn net.Conn) {
-	defer conn.Close()
-	
-	parser := NewMessageParser(conn, '\x00')
-	
-	for {
-		message, err := parser.ReadMessage()
-		if err != nil {
-			if err != io.EOF {
-				log.Printf("Error reading from Unix connection: %v", err)
-			}
-			break
-		}
+func (s *UnixSyslogServer) handleUnixPacket(data []byte, addr net.Addr) {
+	// For SOCK_DGRAM, each packet is a complete message
+	// Use consistent newline handling
+	data = StripTrailingNewline(data)
 
-		if err := s.processUnixMessage(message); err != nil {
-			log.Printf("Error processing Unix message: %v", err)
-		}
+	if err := s.processUnixMessage(data); err != nil {
+		log.Printf("Error processing Unix packet from %v: %v", addr, err)
 	}
 }
 
@@ -89,7 +81,7 @@ func (s *UnixSyslogServer) processUnixMessage(data []byte) error {
 // Cleanup closes the listener and removes the socket file
 func (s *UnixSyslogServer) Cleanup() {
 	if s.listener != nil {
-		log.Printf("Closing Unix socket listener...")
+		log.Printf("Closing Unix datagram socket...")
 		s.listener.Close()
 	}
 	

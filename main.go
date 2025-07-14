@@ -155,10 +155,10 @@ func processStdinSimple(encryptor *Encryptor) error {
 		
 		lineCount++
 		
-		// Add back \n for consistent format with SOCK_STREAM
-		messageWithNewline := append(message, '\n')
+		// Use consistent newline handling (strip any remaining newlines)
+		message = StripTrailingNewline(message)
 		
-		if err := encryptAndOutput(encryptor, messageWithNewline); err != nil {
+		if err := encryptAndOutput(encryptor, message); err != nil {
 			log.Printf("Failed to encrypt line %d: %v", lineCount, err)
 			continue
 		}

@@ -92,8 +92,9 @@ func main() {
 			continue
 		}
 
-		// Output the original log message to stdout (preserve original formatting)
-		fmt.Print(decryptedMessage)
+		// Output the original log message to stdout and add newline 
+		// (since encryptor strips newlines during processing)
+		fmt.Printf("%s\n", decryptedMessage)
 	}
 
 	if err := scanner.Err(); err != nil {

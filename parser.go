@@ -59,3 +59,12 @@ func (p *MessageParser) ReadMessage() ([]byte, error) {
 		p.buffer = append(p.buffer, readBuffer[:n]...)
 	}
 }
+
+// StripTrailingNewline removes trailing newline characters from syslog messages
+// This provides consistent handling for both stdin and datagram sources
+func StripTrailingNewline(data []byte) []byte {
+	if len(data) > 0 && data[len(data)-1] == '\n' {
+		return data[:len(data)-1]
+	}
+	return data
+}
