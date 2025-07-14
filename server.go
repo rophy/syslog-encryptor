@@ -35,7 +35,7 @@ func (s *UnixSyslogServer) Start() error {
 	s.listener = listener
 	defer s.Cleanup()
 
-	// Set socket permissions so MariaDB can write to it
+	// Set socket permissions so applications can write to it
 	if err := os.Chmod(s.socketPath, 0666); err != nil {
 		return fmt.Errorf("failed to set socket permissions: %w", err)
 	}

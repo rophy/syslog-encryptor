@@ -106,7 +106,7 @@ func main() {
 		return
 	}
 
-	log.Printf("Starting MariaDB audit log encryptor...")
+	log.Printf("Starting syslog encryptor...")
 
 	// Initialize Prometheus metrics (only for server modes)
 	InitMetrics()
